@@ -1,7 +1,13 @@
 # Slack chat plugin for Redmine
 
 This plugin posts updates to issues in your Redmine installation to a Slack
-channel. Improvements are welcome! Just send a pull request.
+channel. It varies from the source repository in that it will only post to Slack
+if the specified string token is present in the journal notes. 
+
+We started to become inundated with emails and Slack notifications of Redmine updates, so 
+we eventually removed Slack notifications of Redmine events. However, we started to lose 
+real-time notifications for our group and needed a way to indicate when we wanted to push
+a notification to Slack of a Redmine event. Thus, the push token was born!
 
 ## Screenshot
 

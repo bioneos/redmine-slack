@@ -1,88 +1,22 @@
 require 'httpclient'
 
 class SlackListener < Redmine::Hook::Listener
-	def controller_issues_new_after_save(context={})
-		issue = context[:issue]
-
-		channel = channel_for_project issue.project
-		url = url_for_project issue.project
-
-		return unless channel and url
-		return if issue.is_private?
-
-		msg = "[#{escape issue.project}] #{escape issue.author} created <#{object_url issue}|#{escape issue}>#{mentions issue.description}"
-
-		attachment = {}
-		attachment[:text] = escape issue.description if issue.description
-		attachment[:fields] = [{
-			:title => I18n.t("field_status"),
-			:value => escape(issue.status.to_s),
-			:short => true
-		}, {
-			:title => I18n.t("field_priority"),
-			:value => escape(issue.priority.to_s),
-			:short => true
-		}, {
-			:title => I18n.t("field_assigned_to"),
-			:value => escape(issue.assigned_to.to_s),
-			:short => true
-		}]
-
-		attachment[:fields] << {
-			:title => I18n.t("field_watcher"),
-			:value => escape(issue.watcher_users.join(', ')),
-			:short => true
-		} if Setting.plugin_redmine_slack[:display_watchers] == 'yes'
-
-		speak msg, channel, attachment, url
-	end
-
 	def controller_issues_edit_after_save(context={})
 		issue = context[:issue]
 		journal = context[:journal]
 
 		channel = channel_for_project issue.project
 		url = url_for_project issue.project
+		token = token_for_project(issue.project)
 
 		return unless channel and url and Setting.plugin_redmine_slack[:post_updates] == '1'
 		return if issue.is_private?
+		return if journal.notes.index(token).nil?
 
 		msg = "[#{escape issue.project}] #{escape journal.user.to_s} updated <#{object_url issue}|#{escape issue}>#{mentions journal.notes}"
 
 		attachment = {}
 		attachment[:text] = escape journal.notes if journal.notes
-		attachment[:fields] = journal.details.map { |d| detail_to_field d }
-
-		speak msg, channel, attachment, url
-	end
-
-	def model_changeset_scan_commit_for_issue_ids_pre_issue_update(context={})
-		issue = context[:issue]
-		journal = issue.current_journal
-		changeset = context[:changeset]
-
-		channel = channel_for_project issue.project
-		url = url_for_project issue.project
-
-		return unless channel and url and issue.save
-		return if issue.is_private?
-
-		msg = "[#{escape issue.project}] #{escape journal.user.to_s} updated <#{object_url issue}|#{escape issue}>"
-
-		repository = changeset.repository
-
-		revision_url = Rails.application.routes.url_for(
-			:controller => 'repositories',
-			:action => 'revision',
-			:id => repository.project,
-			:repository_id => repository.identifier_param,
-			:rev => changeset.revision,
-			:host => Setting.host_name,
-			:protocol => Setting.protocol
-		)
-
-		attachment = {}
-		attachment[:text] = ll(Setting.default_language, :text_status_changed_by_changeset, "<#{revision_url}|#{escape changeset.comments}>")
 		attachment[:fields] = journal.details.map { |d| detail_to_field d }
 
 		speak msg, channel, attachment, url
@@ -156,6 +90,18 @@ private
 		# Channel name '-' is reserved for NOT notifying
 		return nil if val.to_s == '-'
 		val
+	end
+
+	def token_for_project(proj)
+		return nil if proj.blank?
+
+		cf = ProjectCustomField.find_by_name("Slack Push Token")
+
+		return [
+			(proj.custom_value_for(cf).value rescue nil),
+			(token_for_project(proj.parent)),
+			Setting.plugin_redmine_slack[:slack_token],
+		].find { |v| v.present? }
 	end
 
 	def detail_to_field(detail)
