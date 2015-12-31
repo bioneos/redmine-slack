@@ -9,7 +9,7 @@ class SlackListener < Redmine::Hook::Listener
 		url = url_for_project issue.project
 		token = token_for_project(issue.project)
 
-		return unless channel and url and Setting.plugin_redmine_slack[:post_updates] == '1'
+		return unless channel and url and token and Setting.plugin_redmine_slack[:post_updates] == '1'
 		return if issue.is_private?
 		return if journal.notes.index(token).nil?
 
@@ -100,7 +100,7 @@ private
 		return [
 			(proj.custom_value_for(cf).value rescue nil),
 			(token_for_project(proj.parent)),
-			Setting.plugin_redmine_slack[:slack_token],
+			Setting.plugin_redmine_slack[:push_token],
 		].find { |v| v.present? }
 	end
 

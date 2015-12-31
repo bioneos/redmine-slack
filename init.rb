@@ -6,7 +6,6 @@ Redmine::Plugin.register :redmine_slack do
 	name 'Redmine Slack'
 	author 'Samuel Cormier-Iijima/BioNeos Inc'
 	url 'https://github.com/bioneos/redmine-slack'
-	author_url 'http://www.sciyoshi.com http://bioneos.com'
 	description 'Slack chat integration'
 	version '0.1'
 
@@ -19,7 +18,8 @@ Redmine::Plugin.register :redmine_slack do
       'push_token' => '#slack',
 			'icon' => 'https://raw.github.com/sciyoshi/redmine-slack/gh-pages/icon.png',
 			'username' => 'redmine',
-			'display_watchers' => 'no'
+			'display_watchers' => 'no',
+      'post_updates' => '1'
 		},
 		:partial => 'settings/slack_settings'
 end
