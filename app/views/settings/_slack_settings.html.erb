@@ -9,13 +9,17 @@
 </p>
 
 <p>
+    The channel can be changed on a per-project basis by creating a
+    <a href="/custom_fields/new?type=ProjectCustomField">project custom field</a> named "Slack Channel" (without quotes).
+</p>
+
+<p>
     	<label for="settings_push_token">Slack Push Token</label>
     	<input type="text" id="settings_push_token" value="<%= settings['push_token'] %>" name="settings[push_token]" />
 </p>
 
 <p>
-	The channel can be changed on a per-project basis by creating a
-	<a href="/custom_fields/new?type=ProjectCustomField">project custom field</a> named "Slack Channel" (without quotes).
+    The string to be used to indicate an update should be pushed to Slack
 </p>
 
 <p>
