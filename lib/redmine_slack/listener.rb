@@ -1,6 +1,9 @@
 require 'httpclient'
 
 class SlackListener < Redmine::Hook::Listener
+  include ERB::Util
+  include GravatarHelper::PublicMethods
+
 	def controller_issues_edit_after_save(context={})
 		issue = context[:issue]
 		journal = context[:journal]
@@ -13,9 +16,12 @@ class SlackListener < Redmine::Hook::Listener
 		return if issue.is_private?
 		return if journal.notes.index(token).nil?
 
-		msg = "[#{escape issue.project}] #{escape journal.user.to_s} updated <#{object_url issue}|#{escape issue}>#{mentions journal.notes}"
+		msg = "[#{escape issue.project}] <#{object_url issue}|#{escape issue}>#{mentions journal.notes} Updated"
+    gravatar = gravatar_url(journal.user.mail, :size => '16')
 
 		attachment = {}
+    attachment[:author_name] = escape(journal.user.to_s)
+    attachment[:author_icon] = gravatar unless gravatar.nil? || gravatar.empty?
 		attachment[:text] = escape journal.notes if journal.notes
 		attachment[:fields] = journal.details.map { |d| detail_to_field d }
 
