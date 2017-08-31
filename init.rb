@@ -7,7 +7,7 @@ Redmine::Plugin.register :redmine_slack do
 	author 'Samuel Cormier-Iijima/BioNeos Inc'
 	url 'https://github.com/bioneos/redmine-slack'
 	description 'Slack chat integration'
-	version '0.1'
+	version '0.2'
 
 	requires_redmine :version_or_higher => '0.8.0'
 

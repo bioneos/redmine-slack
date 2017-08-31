@@ -3,6 +3,42 @@ require 'httpclient'
 class SlackListener < Redmine::Hook::Listener
   include ERB::Util
   include GravatarHelper::PublicMethods
+	def controller_issues_new_after_save(context={})
+		issue = context[:issue]
+
+		channel = channel_for_project issue.project
+		url = url_for_project issue.project
+		token = token_for_project(issue.project)
+
+		return unless channel and url and token
+		return if issue.is_private?
+
+		msg = "[#{escape issue.project}] #{escape issue.author} created <#{object_url issue}|#{escape issue}>#{mentions issue.description}"
+
+		attachment = {}
+		attachment[:text] = escape issue.description if issue.description
+		attachment[:fields] = [{
+			:title => I18n.t("field_status"),
+			:value => escape(issue.status.to_s),
+			:short => true
+		}, {
+			:title => I18n.t("field_priority"),
+			:value => escape(issue.priority.to_s),
+			:short => true
+		}, {
+			:title => I18n.t("field_assigned_to"),
+			:value => escape(issue.assigned_to.to_s),
+			:short => true
+		}]
+
+		attachment[:fields] << {
+			:title => I18n.t("field_watcher"),
+			:value => escape(issue.watcher_users.join(', ')),
+			:short => true
+		} if Setting.plugin_redmine_slack['display_watchers'] == 'yes'
+
+		speak msg, channel, attachment, url
+	end
 
 	def controller_issues_edit_after_save(context={})
 		issue = context[:issue]
@@ -28,10 +64,80 @@ class SlackListener < Redmine::Hook::Listener
 		speak msg, channel, attachment, url
 	end
 
+	def model_changeset_scan_commit_for_issue_ids_pre_issue_update(context={})
+		issue = context[:issue]
+		journal = issue.current_journal
+		changeset = context[:changeset]
+
+		channel = channel_for_project issue.project
+		url = url_for_project issue.project
+
+		return unless channel and url and issue.save
+		return if issue.is_private?
+
+		msg = "[#{escape issue.project}] #{escape journal.user.to_s} updated <#{object_url issue}|#{escape issue}>"
+
+		repository = changeset.repository
+
+		if Setting.host_name.to_s =~ /\A(https?\:\/\/)?(.+?)(\:(\d+))?(\/.+)?\z/i
+			host, port, prefix = $2, $4, $5
+			revision_url = Rails.application.routes.url_for(
+				:controller => 'repositories',
+				:action => 'revision',
+				:id => repository.project,
+				:repository_id => repository.identifier_param,
+				:rev => changeset.revision,
+				:host => host,
+				:protocol => Setting.protocol,
+				:port => port,
+				:script_name => prefix
+			)
+		else
+			revision_url = Rails.application.routes.url_for(
+				:controller => 'repositories',
+				:action => 'revision',
+				:id => repository.project,
+				:repository_id => repository.identifier_param,
+				:rev => changeset.revision,
+				:host => Setting.host_name,
+				:protocol => Setting.protocol
+			)
+		end
+
+		attachment = {}
+		attachment[:text] = ll(Setting.default_language, :text_status_changed_by_changeset, "<#{revision_url}|#{escape changeset.comments}>")
+		attachment[:fields] = journal.details.map { |d| detail_to_field d }
+
+		speak msg, channel, attachment, url
+	end
+
+	def controller_wiki_edit_after_save(context = { })
+		return unless Setting.plugin_redmine_slack['post_wiki_updates'] == '1'
+
+		project = context[:project]
+		page = context[:page]
+
+		user = page.content.author
+		project_url = "<#{object_url project}|#{escape project}>"
+		page_url = "<#{object_url page}|#{page.title}>"
+		comment = "[#{project_url}] #{page_url} updated by *#{user}*"
+
+		channel = channel_for_project project
+		url = url_for_project project
+
+		attachment = nil
+		if not page.content.comments.empty?
+			attachment = {}
+			attachment[:text] = "#{escape page.content.comments}"
+		end
+
+		speak comment, channel, attachment, url
+	end
+
 	def speak(msg, channel, attachment=nil, url=nil)
-		url = Setting.plugin_redmine_slack[:slack_url] if not url
-		username = Setting.plugin_redmine_slack[:username]
-		icon = Setting.plugin_redmine_slack[:icon]
+		url = Setting.plugin_redmine_slack['slack_url'] if not url
+		username = Setting.plugin_redmine_slack['username']
+		icon = Setting.plugin_redmine_slack['icon']
 
 		params = {
 			:text => msg,
@@ -54,10 +160,11 @@ class SlackListener < Redmine::Hook::Listener
 		begin
 			client = HTTPClient.new
 			client.ssl_config.cert_store.set_default_paths
-			client.ssl_config.ssl_version = "SSLv23"
+			client.ssl_config.ssl_version = :auto
 			client.post_async url, {:payload => params.to_json}
-		rescue
-			# Bury exception if connection error
+		rescue Exception => e
+			Rails.logger.warn("cannot connect to #{url}")
+			Rails.logger.warn(e)
 		end
 	end
 
@@ -67,7 +174,20 @@ private
 	end
 
 	def object_url(obj)
-		Rails.application.routes.url_for(obj.event_url({:host => Setting.host_name, :protocol => Setting.protocol}))
+		if Setting.host_name.to_s =~ /\A(https?\:\/\/)?(.+?)(\:(\d+))?(\/.+)?\z/i
+			host, port, prefix = $2, $4, $5
+			Rails.application.routes.url_for(obj.event_url({
+				:host => host,
+				:protocol => Setting.protocol,
+				:port => port,
+				:script_name => prefix
+			}))
+		else
+			Rails.application.routes.url_for(obj.event_url({
+				:host => Setting.host_name,
+				:protocol => Setting.protocol
+			}))
+		end
 	end
 
 	def url_for_project(proj)
@@ -78,7 +198,7 @@ private
 		return [
 			(proj.custom_value_for(cf).value rescue nil),
 			(url_for_project proj.parent),
-			Setting.plugin_redmine_slack[:slack_url],
+			Setting.plugin_redmine_slack['slack_url'],
 		].find{|v| v.present?}
 	end
 
@@ -90,7 +210,7 @@ private
 		val = [
 			(proj.custom_value_for(cf).value rescue nil),
 			(channel_for_project proj.parent),
-			Setting.plugin_redmine_slack[:channel],
+			Setting.plugin_redmine_slack['channel'],
 		].find{|v| v.present?}
 
 		# Channel name '-' is reserved for NOT notifying
@@ -119,7 +239,11 @@ private
 			title = I18n.t :label_attachment
 		else
 			key = detail.prop_key.to_s.sub("_id", "")
-			title = I18n.t "field_#{key}"
+			if key == "parent"
+				title = I18n.t "field_#{key}_issue"
+			else
+				title = I18n.t "field_#{key}"
+			end
 		end
 
 		short = true
@@ -170,6 +294,10 @@ private
 	end
 
 	def extract_usernames text = ''
+		if text.nil?
+			text = ''
+		end
+
 		# slack usernames may only contain lowercase letters, numbers,
 		# dashes and underscores and must start with a letter or number.
 		text.scan(/@[a-z0-9][a-z0-9_\-]*/).uniq
