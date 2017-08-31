@@ -6,7 +6,7 @@ if the specified string token is present in the journal notes.
 
 ## Push token
 
-If you are worreid about too much cross-posting, and would only like certain *important*
+If you are worried about too much cross-posting, and would only like certain *important*
 messages to make their way into Slack, we have the solution! Under the original version
 of this integration, our manager accounts (set to receive emails about all Redmine events)
 started to become inundated with two emails and a Slack notification for every Redmine
