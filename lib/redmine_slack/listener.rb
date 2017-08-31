@@ -12,6 +12,7 @@ class SlackListener < Redmine::Hook::Listener
 
 		return unless channel and url and token
 		return if issue.is_private?
+		return if issue.description.index(token).nil?
 
 		msg = "[#{escape issue.project}] #{escape issue.author} created <#{object_url issue}|#{escape issue}>#{mentions issue.description}"
 
